@@ -1,9 +1,16 @@
-module Arrow = struct
+module Category = struct
   module type S = sig
     type ('a, 'b) t
 
     val id : unit -> ('a, 'a) t
     val compose : ('b, 'c) t -> ('a, 'b) t -> ('a, 'c) t
+  end
+end
+
+module Arrow = struct
+  module type S = sig
+    include Category.S
+
     val arr : ('a -> 'b) -> ('a, 'b) t
     val first : ('a, 'b) t -> ('a * 'c, 'b * 'c) t
   end
@@ -11,10 +18,8 @@ end
 
 module Arrow_cartesian = struct
   module type S = sig
-    type ('a, 'b) t
+    include Category.S
 
-    val id : unit -> ('a, 'a) t
-    val compose : ('b, 'c) t -> ('a, 'b) t -> ('a, 'c) t
     val arr : ('a -> 'b) -> ('a, 'b) t
     val unit : unit -> ('a, unit) t
     val fst : unit -> ('a * 'b, 'a) t
@@ -67,12 +72,14 @@ module Simple = struct
     let ( and& ) = X.Dyn.both
   end
 
+  module Key = Store.Key.Instance ()
+
   module Of_arrow_cartesian (X : Arrow_cartesian.S) = struct
-    module Store = Store.Simple.Make (X)
+    module Store = Store.Make (X)
 
     type 'a dyn =
       | Const : 'a -> 'a dyn
-      | Loc : 'a Store.Key.t -> 'a dyn
+      | Loc : 'a Key.t -> 'a dyn
       | Both : 'a dyn * 'b dyn -> ('a * 'b) dyn
 
     type 'a static =
@@ -99,12 +106,12 @@ module Simple = struct
 
     let inject x v = Inject (v, x)
 
-    type 'a state = State : ('a, 'b) X.t * 'b Store.t -> 'a state
+    type 'a state = State : ('a, 'b) X.t * ('b, Key.k) Store.t -> 'a state
 
     exception Unbound_dynamic_value
 
     let extract f =
-      let rec dyn : type a b. a Store.t -> b Dyn.t -> (a, b) X.t =
+      let rec dyn : type a b. (a, Key.k) Store.t -> b Dyn.t -> (a, b) X.t =
        fun store d ->
         match d with
         | Const x -> X.arr (fun _ -> x)
@@ -128,12 +135,12 @@ module Simple = struct
             let store =
               Store.map { f = (fun sarr -> X.compose sarr (X.fst ())) } store
             in
-            let loc = Store.Key.create () in
+            let loc = Key.create () in
             let store = Store.add store loc (X.snd ()) in
             let s = State (to_store, store) in
             (s, Loc loc)
       in
-      let loc = Store.Key.create () in
+      let loc = Key.create () in
       let to_store = X.id () in
       let store = Store.add Store.empty loc (X.id ()) in
       let s = State (to_store, store) in
@@ -222,7 +229,7 @@ module Classified = struct
   end
 
   module Of_arrow_cartesian (X : Arrow_cartesian.S) = struct
-    module Store = Store.Classified.Make (X)
+    module S = Store.Make (X)
 
     type ('a, 'k) dyn =
       | Const : 'a -> ('a, 'k) dyn
@@ -256,19 +263,17 @@ module Classified = struct
     let inject x = { poly = (fun v -> Inject (v, x)) }
 
     type ('a, 'k) state =
-      | State : ('a, 'b) X.t * ('b, 'k) Store.t -> ('a, 'k) state
+      | State : ('a, 'b) X.t * ('b, 'k) S.t -> ('a, 'k) state
 
     let extract f =
       let module Inst = Store.Key.Instance () in
-      let rec dyn :
-          type a b. (a, Inst.k) Store.t -> (b, Inst.k) Dyn.t -> (a, b) X.t =
+      let rec dyn : type a b. (a, Inst.k) S.t -> (b, Inst.k) Dyn.t -> (a, b) X.t
+          =
        fun store d ->
         match d with
         | Const x -> X.arr (fun _ -> x)
         | Loc loc -> (
-            match Store.find store loc with
-            | None -> assert false
-            | Some arr -> arr)
+            match S.find store loc with None -> assert false | Some arr -> arr)
         | Both (x, y) -> X.pair (dyn store x) (dyn store y)
       in
       let rec static :
@@ -285,16 +290,16 @@ module Classified = struct
             let arr = X.compose arr darr in
             let to_store = X.compose (X.pair (X.id ()) arr) to_store in
             let store =
-              Store.map { f = (fun sarr -> X.compose sarr (X.fst ())) } store
+              S.map { f = (fun sarr -> X.compose sarr (X.fst ())) } store
             in
             let loc = Inst.create () in
-            let store = Store.add store loc (X.snd ()) in
+            let store = S.add store loc (X.snd ()) in
             let s = State (to_store, store) in
             (s, Loc loc)
       in
       let loc = Inst.create () in
       let to_store = X.id () in
-      let store = Store.add Store.empty loc (X.id ()) in
+      let store = S.add S.empty loc (X.id ()) in
       let s = State (to_store, store) in
       let State (to_store, store), d = static s (f.poly (Loc loc)) in
       X.compose (dyn store d) to_store

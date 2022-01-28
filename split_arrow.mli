@@ -1,9 +1,16 @@
-module Arrow : sig
+module Category : sig
   module type S = sig
     type ('a, 'b) t
 
     val id : unit -> ('a, 'a) t
     val compose : ('b, 'c) t -> ('a, 'b) t -> ('a, 'c) t
+  end
+end
+
+module Arrow : sig
+  module type S = sig
+    include Category.S
+
     val arr : ('a -> 'b) -> ('a, 'b) t
     val first : ('a, 'b) t -> ('a * 'c, 'b * 'c) t
   end
@@ -11,10 +18,8 @@ end
 
 module Arrow_cartesian : sig
   module type S = sig
-    type ('a, 'b) t
+    include Category.S
 
-    val id : unit -> ('a, 'a) t
-    val compose : ('b, 'c) t -> ('a, 'b) t -> ('a, 'c) t
     val arr : ('a -> 'b) -> ('a, 'b) t
     val unit : unit -> ('a, unit) t
     val fst : unit -> ('a * 'b, 'a) t
