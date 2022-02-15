@@ -63,6 +63,7 @@ module Arrow_cartesian : sig
   end
 
   module Of_arrow (A : Arrow.S) : S with type ('a, 'b) t = ('a, 'b) A.t
+  module To_arrow (A : S) : Arrow.S with type ('a, 'b) t = ('a, 'b) A.t
 end
 
 module Simple : sig

@@ -42,6 +42,13 @@ module Arrow_cartesian = struct
     let pair f s =
       compose (compose (first f) (second s)) (arr (fun x -> (x, x)))
   end
+
+  module To_arrow (A : S) : Arrow.S with type ('a, 'b) t = ('a, 'b) A.t = struct
+    include A
+
+    let first f =
+      pair (compose f (fst ())) (snd ())
+  end
 end
 
 module Simple = struct
