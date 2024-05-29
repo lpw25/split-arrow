@@ -49,7 +49,7 @@ end
 
 module Threadless : sig
   module type S = sig
-    module Static : sig
+    module Builder : sig
       type 'a t
 
       val return : 'a -> 'a t
@@ -58,14 +58,14 @@ module Threadless : sig
 
       (** Should satisfy the following laws:
 
-          - [Static.bind (Static.return x) f = f x]
-          - [Static.bind m Static.return = m]
-          - [Static.bind (Static.bind m f) g
-             = Static.bind m (fun x -> Static.bind (f x) g)]
+          - [Builder.bind (Builder.return x) f = f x]
+          - [Builder.bind m Builder.return = m]
+          - [Builder.bind (Builder.bind m f) g
+             = Builder.bind m (fun x -> Builder.bind (f x) g)]
       *)
     end
 
-    module Dyn : sig
+    module Node : sig
       type 'a t
 
       val const : 'a -> 'a t
@@ -74,27 +74,27 @@ module Threadless : sig
       val fst : ('a * 'b) t -> 'a t
       val snd : ('a * 'b) t -> 'b t
 
-      val map : ('a -> 'b) -> 'a t -> 'b t Static.t
+      val map : ('a -> 'b) -> 'a t -> 'b t Builder.t
 
       (** Should satisfy the following laws:
 
-          - [Dyn.map (fun x -> x) a = Static.return a]
-          - [Static.bind (Dyn.map g a) (Dyn.map f)
-             = Dyn.map (fun x -> f (g x)) a]
-          - [Dyn.map (fun (x, y) -> y) (Dyn.both (const a) b)
-             = Static.return b]
-          - [Dyn.map (fun (x, y) -> x) (Dyn.both a (const b))
-             = Static.return a]
-          - [Dyn.map (fun ((x, y), z) -> (x, (y, z))) (Dyn.both (Dyn.both a b) c)
-             = Dyn.both a (Dyn.both b c)]
-          - [Dyn.map (fun (x, y) -> (f x, g y)) (Dyn.both a b)
-             = Static.bind (Dyn.map f a) (fun x ->
-                 Static.bind (Dyn.map g b) (fun y ->
-                   Static.return (Dyn.both x y)))]
+          - [Node.map (fun x -> x) a = Builder.return a]
+          - [Builder.bind (Node.map g a) (Node.map f)
+             = Node.map (fun x -> f (g x)) a]
+          - [Node.map (fun (x, y) -> y) (Node.both (const a) b)
+             = Builder.return b]
+          - [Node.map (fun (x, y) -> x) (Node.both a (const b))
+             = Builder.return a]
+          - [Node.map (fun ((x, y), z) -> (x, (y, z))) (Node.both (Node.both a b) c)
+             = Node.both a (Node.both b c)]
+          - [Node.map (fun (x, y) -> (f x, g y)) (Node.both a b)
+             = Builder.bind (Node.map f a) (fun x ->
+                 Builder.bind (Node.map g b) (fun y ->
+                   Builder.return (Node.both x y)))]
       *)
     end
 
-    type ('a, 'b) t = 'a Dyn.t -> 'b Dyn.t Static.t
+    type ('a, 'b) t = 'a Node.t -> 'b Node.t Builder.t
 
   end
 
@@ -103,7 +103,7 @@ module Threadless : sig
 
     val inject : ('a, 'b) X.t -> ('a, 'b) t
 
-    exception Unbound_dynamic_value
+    exception Unbound_node
 
     val extract : ('a, 'b) t -> ('a, 'b) X.t
   end
@@ -111,21 +111,21 @@ module Threadless : sig
   module To_arrow (X : S) : Arrow.S with type ('a, 'b) t = ('a, 'b) X.t
 
   module Syntax (X : S) : sig
-    val return : 'a -> 'a X.Static.t
+    val return : 'a -> 'a X.Builder.t
 
-    val ( let* ) : 'a X.Static.t -> ('a -> 'b X.Static.t) -> 'b X.Static.t
+    val ( let* ) : 'a X.Builder.t -> ('a -> 'b X.Builder.t) -> 'b X.Builder.t
 
-    val ( let+ ) : 'a X.Static.t -> ('a -> 'b) -> 'b X.Static.t
+    val ( let+ ) : 'a X.Builder.t -> ('a -> 'b) -> 'b X.Builder.t
 
-    val ( let& ) : 'a X.Dyn.t -> ('a -> 'b) -> 'b X.Dyn.t X.Static.t
+    val ( let& ) : 'a X.Node.t -> ('a -> 'b) -> 'b X.Node.t X.Builder.t
 
-    val ( and& ) : 'a X.Dyn.t -> 'b X.Dyn.t -> ('a * 'b) X.Dyn.t
+    val ( and& ) : 'a X.Node.t -> 'b X.Node.t -> ('a * 'b) X.Node.t
   end
 end
 
 module Threaded : sig
   module type S = sig
-    module Static : sig
+    module Builder : sig
       type ('a, 'k) t
 
       val return : 'a -> ('a, 'k) t
@@ -134,14 +134,14 @@ module Threaded : sig
 
       (** Should satisfy the following laws:
 
-          - [Static.bind (Static.return x) f = f x]
-          - [Static.bind m Static.return = m]
-          - [Static.bind (Static.bind m f) g
-             = Static.bind m (fun x -> Static.bind (f x) g)]
+          - [Builder.bind (Builder.return x) f = f x]
+          - [Builder.bind m Builder.return = m]
+          - [Builder.bind (Builder.bind m f) g
+             = Builder.bind m (fun x -> Builder.bind (f x) g)]
       *)
     end
 
-    module Dyn : sig
+    module Node : sig
       type ('a, 'k) t
 
       val const : 'a -> ('a, 'k) t
@@ -150,28 +150,28 @@ module Threaded : sig
       val fst : ('a * 'b, 'k) t -> ('a, 'k) t
       val snd : ('a * 'b, 'k) t -> ('b, 'k) t
 
-      val map : ('a -> 'b) -> ('a, 'k) t -> (('b, 'k) t, 'k) Static.t
+      val map : ('a -> 'b) -> ('a, 'k) t -> (('b, 'k) t, 'k) Builder.t
 
       (** Should satisfy the following laws:
 
-          - [Dyn.map (fun x -> x) a = Static.return a]
-          - [Static.bind (Dyn.map g a) (Dyn.map f)
-             = Dyn.map (fun x -> f (g x)) a]
-          - [Dyn.map (fun (x, y) -> y) (Dyn.both (const a) b)
-             = Static.return b]
-          - [Dyn.map (fun (x, y) -> x) (Dyn.both a (const b))
-             = Static.return a]
-          - [Dyn.map (fun ((x, y), z) -> (x, (y, z))) (Dyn.both (Dyn.both a b) c)
-             = Dyn.both a (Dyn.both b c)]
-          - [Dyn.map (fun (x, y) -> (f x, g y)) (Dyn.both a b)
-             = Static.bind (Dyn.map f a) (fun x ->
-                 Static.bind (Dyn.map g b) (fun y ->
-                   Static.return (Dyn.both x y)))]
+          - [Node.map (fun x -> x) a = Builder.return a]
+          - [Builder.bind (Node.map g a) (Node.map f)
+             = Node.map (fun x -> f (g x)) a]
+          - [Node.map (fun (x, y) -> y) (Node.both (const a) b)
+             = Builder.return b]
+          - [Node.map (fun (x, y) -> x) (Node.both a (const b))
+             = Builder.return a]
+          - [Node.map (fun ((x, y), z) -> (x, (y, z))) (Node.both (Node.both a b) c)
+             = Node.both a (Node.both b c)]
+          - [Node.map (fun (x, y) -> (f x, g y)) (Node.both a b)
+             = Builder.bind (Node.map f a) (fun x ->
+                 Builder.bind (Node.map g b) (fun y ->
+                   Builder.return (Node.both x y)))]
       *)
     end
 
     type ('a, 'b) t = {
-      poly : 'k. ('a, 'k) Dyn.t -> (('b, 'k) Dyn.t, 'k) Static.t;
+      poly : 'k. ('a, 'k) Node.t -> (('b, 'k) Node.t, 'k) Builder.t;
     }
   end
 
@@ -186,16 +186,16 @@ module Threaded : sig
   module To_arrow (X : S) : Arrow.S with type ('a, 'b) t = ('a, 'b) X.t
 
   module Syntax (X : S) : sig
-    val return : 'a -> ('a, 'k) X.Static.t
+    val return : 'a -> ('a, 'k) X.Builder.t
 
     val ( let* ) :
-      ('a, 'k) X.Static.t -> ('a -> ('b, 'k) X.Static.t) -> ('b, 'k) X.Static.t
+      ('a, 'k) X.Builder.t -> ('a -> ('b, 'k) X.Builder.t) -> ('b, 'k) X.Builder.t
 
-    val ( let+ ) : ('a, 'k) X.Static.t -> ('a -> 'b) -> ('b, 'k) X.Static.t
+    val ( let+ ) : ('a, 'k) X.Builder.t -> ('a -> 'b) -> ('b, 'k) X.Builder.t
 
     val ( let& ) :
-      ('a, 'k) X.Dyn.t -> ('a -> 'b) -> (('b, 'k) X.Dyn.t, 'k) X.Static.t
+      ('a, 'k) X.Node.t -> ('a -> 'b) -> (('b, 'k) X.Node.t, 'k) X.Builder.t
 
-    val ( and& ) : ('a, 'k) X.Dyn.t -> ('b, 'k) X.Dyn.t -> ('a * 'b, 'k) X.Dyn.t
+    val ( and& ) : ('a, 'k) X.Node.t -> ('b, 'k) X.Node.t -> ('a * 'b, 'k) X.Node.t
   end
 end
