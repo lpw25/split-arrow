@@ -2,7 +2,7 @@ module Category : sig
   module type S = sig
     type ('a, 'b) t
 
-    val id : unit -> ('a, 'a) t
+    val id : ('a, 'a) t
     val compose : ('b, 'c) t -> ('a, 'b) t -> ('a, 'c) t
 
     (** Should satisfy the following laws:
@@ -20,6 +20,10 @@ module Arrow : sig
 
     val arr : ('a -> 'b) -> ('a, 'b) t
     val first : ('a, 'b) t -> ('a * 'c, 'b * 'c) t
+    val second : ('b, 'c) t -> ('a * 'b, 'a * 'c) t
+    val fst : ('a * 'b, 'a) t
+    val snd : ('a * 'b, 'b) t
+    val dup : ('a, 'a * 'a) t
 
     (** Should satisfy the following laws:
 
@@ -33,45 +37,23 @@ module Arrow : sig
            = compose (first f) (arr (fun (x, y) -> (x, g y)))]
         - [compose (arr (fun ((x, y), z) -> (x, (y, z)))) (first (first f))
            = compose (first f) (arr (fun ((x, y), z) -> (x, (y, z))))]
-    *)
-  end
-end
-
-module Arrow_cartesian : sig
-  module type S = sig
-    include Category.S
-
-    val arr : ('a -> 'b) -> ('a, 'b) t
-    val unit : unit -> ('a, unit) t
-    val fst : unit -> ('a * 'b, 'a) t
-    val snd : unit -> ('a * 'b, 'b) t
-    val pair : ('a, 'b) t -> ('a, 'c) t -> ('a, 'b * 'c) t
-
-    (** Should satisfy the following laws:
-
-        - [id () = arr (fun x -> x)]
-        - [compose (arr f) (arr g) = arr (fun x -> f (g x))]
-        - [unit () = arr (fun _ -> ())]
+        - [second f =
+             compose (arr (fun (y, x) -> (x, y)))
+               (compose (first f) (arr (fun (x, y) -> (y, x))))]
         - [fst () = arr (fun (x, y) -> x)]
         - [snd () = arr (fun (x, y) -> y)]
-        - [pair (arr f) (arr g) = arr (fun x -> (f x, g x))]
-        - [compose (pair f g) h = pair (compose f h) (compose g h)]
-        - [compose (fst ()) (pair f g) = f]
-        - [compose (snd ()) (pair f g) = g]
-        - [f = pair (compose (fst ()) f) (compose (snd ()) f)]
+        - [dup () = arr (fun x -> (x, x))]
     *)
   end
-
-  module Of_arrow (A : Arrow.S) : S with type ('a, 'b) t = ('a, 'b) A.t
-  module To_arrow (A : S) : Arrow.S with type ('a, 'b) t = ('a, 'b) A.t
 end
 
-module Simple : sig
+module Threadless : sig
   module type S = sig
     module Static : sig
       type 'a t
 
       val return : 'a -> 'a t
+
       val bind : 'a t -> ('a -> 'b t) -> 'b t
 
       (** Should satisfy the following laws:
@@ -87,7 +69,11 @@ module Simple : sig
       type 'a t
 
       val const : 'a -> 'a t
+
       val both : 'a t -> 'b t -> ('a * 'b) t
+      val fst : ('a * 'b) t -> 'a t
+      val snd : ('a * 'b) t -> 'b t
+
       val map : ('a -> 'b) -> 'a t -> 'b t Static.t
 
       (** Should satisfy the following laws:
@@ -112,7 +98,7 @@ module Simple : sig
 
   end
 
-  module Of_arrow_cartesian (X : Arrow_cartesian.S) : sig
+  module Of_arrow (X : Arrow.S) : sig
     include S
 
     val inject : ('a, 'b) X.t -> ('a, 'b) t
@@ -122,28 +108,28 @@ module Simple : sig
     val extract : ('a, 'b) t -> ('a, 'b) X.t
   end
 
-  module To_arrow_cartesian (X : S) : sig
-    include Arrow_cartesian.S
-
-    val inject : ('a, 'b) X.t -> ('a, 'b) t
-    val extract : ('a, 'b) t -> ('a, 'b) X.t
-  end
+  module To_arrow (X : S) : Arrow.S with type ('a, 'b) t = ('a, 'b) X.t
 
   module Syntax (X : S) : sig
     val return : 'a -> 'a X.Static.t
+
     val ( let* ) : 'a X.Static.t -> ('a -> 'b X.Static.t) -> 'b X.Static.t
+
     val ( let+ ) : 'a X.Static.t -> ('a -> 'b) -> 'b X.Static.t
+
     val ( let& ) : 'a X.Dyn.t -> ('a -> 'b) -> 'b X.Dyn.t X.Static.t
+
     val ( and& ) : 'a X.Dyn.t -> 'b X.Dyn.t -> ('a * 'b) X.Dyn.t
   end
 end
 
-module Classified : sig
+module Threaded : sig
   module type S = sig
     module Static : sig
       type ('a, 'k) t
 
       val return : 'a -> ('a, 'k) t
+
       val bind : ('a, 'k) t -> ('a -> ('b, 'k) t) -> ('b, 'k) t
 
       (** Should satisfy the following laws:
@@ -159,7 +145,11 @@ module Classified : sig
       type ('a, 'k) t
 
       val const : 'a -> ('a, 'k) t
+
       val both : ('a, 'k) t -> ('b, 'k) t -> ('a * 'b, 'k) t
+      val fst : ('a * 'b, 'k) t -> ('a, 'k) t
+      val snd : ('a * 'b, 'k) t -> ('b, 'k) t
+
       val map : ('a -> 'b) -> ('a, 'k) t -> (('b, 'k) t, 'k) Static.t
 
       (** Should satisfy the following laws:
@@ -185,19 +175,15 @@ module Classified : sig
     }
   end
 
-  module Of_arrow_cartesian (X : Arrow_cartesian.S) : sig
+  module Of_arrow (X : Arrow.S) : sig
     include S
 
     val inject : ('a, 'b) X.t -> ('a, 'b) t
+
     val extract : ('a, 'b) t -> ('a, 'b) X.t
   end
 
-  module To_arrow_cartesian (X : S) : sig
-    include Arrow_cartesian.S
-
-    val inject : ('a, 'b) X.t -> ('a, 'b) t
-    val extract : ('a, 'b) t -> ('a, 'b) X.t
-  end
+  module To_arrow (X : S) : Arrow.S with type ('a, 'b) t = ('a, 'b) X.t
 
   module Syntax (X : S) : sig
     val return : 'a -> ('a, 'k) X.Static.t
